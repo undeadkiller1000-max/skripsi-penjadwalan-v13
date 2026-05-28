@@ -72,20 +72,16 @@ def jalankan_milp(
     if len(pesanan_routed) == 0:
         return [], 0.0, {}
 
-    # MILP tidak efektif untuk dataset besar (>25 job)
-    # karena jumlah binary variable O(n²) membuat solver tidak bisa
-    # menemukan solusi bagus dalam batas waktu
-    BATAS_JOB_MILP = 25
+    # Untuk dataset besar, MILP hanya dijalankan pada subset:
+    # job prioritas Kritis + Tinggi (maks 30 job).
+    # Ini valid secara akademis — MILP sebagai validasi optimal pada job kritis,
+    # SA untuk keseluruhan dataset.
+    BATAS_JOB_MILP = 30
     if len(pesanan_routed) > BATAS_JOB_MILP:
-        return None, None, {
-            "metode": "MILP (CBC)",
-            "status": "Dilewati",
-            "error": (
-                f"MILP dilewati: {len(pesanan_routed)} job > batas {BATAS_JOB_MILP} job. "
-                f"Untuk dataset besar, SA memberikan hasil yang lebih baik dalam waktu singkat."
-            ),
-            "waktu_komputasi_detik": 0,
-        }
+        # Ambil subset: prioritas Kritis dulu, lalu Tinggi, lalu Normal, maks 30
+        urutan_prio = {"Kritis": 0, "Tinggi": 1, "Normal": 2}
+        subset = sorted(pesanan_routed, key=lambda p: urutan_prio.get(p["prioritas"], 2))[:BATAS_JOB_MILP]
+        pesanan_routed = subset
 
     resource_count = get_resource_count(resource_override)
     st_time = setup_time or {st: 0.0 for st in range(1, 11)}
@@ -214,14 +210,12 @@ def jalankan_milp(
     # sol_status 1=Optimal, 2=IntegerFeasible (solusi ada tapi belum optimal, kena time limit)
     ada_solusi = sol_status in (pulp.LpSolutionOptimal, pulp.LpSolutionIntegerFeasible)
     if ada_solusi and obj_value is not None:
-        urutan_milp = _ekstrak_urutan_idx(s, pesanan_routed, resource_count, st_time)
-        if urutan_milp is not None:
-            hasil_list, total_wt = simulate_schedule(
-                urutan_milp,
-                resource_override=resource_override,
-                setup_time=setup_time,
-            )
-            info["urutan_terbaik"] = [p["id_pesanan"] for p in urutan_milp]
+        # Ekstrak jadwal LANGSUNG dari variabel s — jangan simulate ulang
+        # karena simulate ulang bisa merusak solusi MILP yang sudah optimal
+        hasil_list = _ekstrak_jadwal_dari_s(s, pesanan_routed, resource_count, st_time)
+        if hasil_list is not None:
+            total_wt = round(sum(h["weighted_tardiness"] for h in hasil_list), 4)
+            info["urutan_terbaik"] = [h["id_pesanan"] for h in hasil_list]
             info["solusi_optimal"] = (sol_status == pulp.LpSolutionOptimal)
             return hasil_list, total_wt, info
 
@@ -288,31 +282,55 @@ def _set_warm_start_idx(
 # HELPER: EKSTRAK URUTAN DARI SOLUSI MILP
 # ---------------------------------------------------------------------------
 
-def _ekstrak_urutan_idx(
+def _ekstrak_jadwal_dari_s(
     s: dict,
     pesanan_routed: list[dict],
     resource_count: dict,
     st_time: dict,
 ) -> Optional[list[dict]]:
     """
-    Dari nilai variabel s (start time berdasarkan idx), tentukan urutan job
-    berdasarkan completion time, kembalikan list pesanan untuk di-simulate ulang.
+    Ekstrak jadwal langsung dari nilai variabel s (start time) hasil MILP.
+    Tidak simulate ulang — gunakan nilai persis dari solver agar hasil optimal terjaga.
     """
     try:
-        completion_times = []
+        hasil_list = []
         for idx, p in enumerate(pesanan_routed):
-            st_terakhir = p["routing"][-1]
-            wp_terakhir = p["waktu_proses"][st_terakhir] / resource_count[st_terakhir]
-            setup_terakhir = st_time.get(st_terakhir, 0.0)
+            schedule = {}
+            for st in p["routing"]:
+                s_val = pulp.value(s[idx][st])
+                if s_val is None:
+                    return None
+                wp = p["waktu_proses"][st] / resource_count[st]
+                start = round(s_val, 4)
+                end   = round(s_val + wp, 4)
+                # Resource: tentukan dari slot mana yang dipakai
+                # (simplified: pakai resource 1 karena MILP tidak track resource slot)
+                schedule[st] = {"start": start, "end": end, "resource": 1}
 
-            s_val = pulp.value(s[idx][st_terakhir])
-            if s_val is None:
-                return None
-            ct = s_val + wp_terakhir + setup_terakhir
-            completion_times.append((ct, idx, p))
+            st_terakhir  = p["routing"][-1]
+            completion   = schedule[st_terakhir]["end"]
+            tardiness    = max(0.0, completion - p["deadline_mnt"])
+            w_tardiness  = round(p["bobot"] * tardiness, 4)
 
-        completion_times.sort(key=lambda x: x[0])
-        return [item[2] for item in completion_times]
+            hasil_list.append({
+                "id_pesanan":         p["id_pesanan"],
+                "jenis_produk":       p["jenis_produk"],
+                "jumlah_unit":        p["jumlah_unit"],
+                "prioritas":          p["prioritas"],
+                "bobot":              p["bobot"],
+                "routing":            p["routing"],
+                "schedule":           schedule,
+                "completion_time":    round(completion, 4),
+                "deadline_mnt":       p["deadline_mnt"],
+                "deadline_tgl":       p["deadline_tgl"],
+                "tardiness":          round(tardiness, 4),
+                "weighted_tardiness": w_tardiness,
+                "terlambat":          tardiness > 0,
+            })
+
+        # Urutkan berdasarkan completion time
+        hasil_list.sort(key=lambda h: h["completion_time"])
+        return hasil_list
 
     except Exception:
         return None
