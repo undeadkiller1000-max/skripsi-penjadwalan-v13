@@ -44,12 +44,12 @@ def render_sidebar():
 
     # Resource — dalam sidebar expander, pakai st.sidebar.number_input
     with st.sidebar.expander("🔧 Jumlah Resource per Stasiun", expanded=False):
-        st.sidebar.caption("Ubah jika ada kondisi khusus. Default = kondisi BAU.")
+        st.caption("Ubah jika ada kondisi khusus. Default = kondisi BAU.")
         resource_override = {}
         for st_id, nama in STASIUN.items():
             default = RESOURCE_CONFIG[st_id]["default"]
             maks    = RESOURCE_CONFIG[st_id]["max"]
-            val = st.sidebar.number_input(
+            val = st.number_input(
                 f"St.{st_id} – {nama}", min_value=1, max_value=maks,
                 value=default, step=1, key=f"res_{st_id}",
                 help=f"Default: {default}, Maks: {maks}",
@@ -59,10 +59,10 @@ def render_sidebar():
 
     # Setup time — dalam sidebar expander
     with st.sidebar.expander("⏱ Setup Time (menit/job/stasiun)", expanded=False):
-        st.sidebar.caption("Default 0 — kapasitas sudah memperhitungkan setup.")
+        st.caption("Default 0 — kapasitas sudah memperhitungkan setup.")
         setup_time = {}
         for st_id, nama in STASIUN.items():
-            val = st.sidebar.number_input(
+            val = st.number_input(
                 f"St.{st_id} – {nama}", min_value=0.0, max_value=60.0,
                 value=float(SETUP_TIME_DEFAULT[st_id]), step=1.0,
                 key=f"setup_{st_id}",
@@ -230,11 +230,9 @@ def main():
     with col_btn1:
         if st.button("✅ Pilih Semua", use_container_width=True, key="btn_all"):
             st.session_state["selected_rows"] = set(rows_filtered)
-            st.rerun()
     with col_btn2:
         if st.button("❌ Hapus Semua", use_container_width=True, key="btn_none"):
             st.session_state["selected_rows"] = set()
-            st.rerun()
 
     # Header kolom
     hcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
@@ -243,53 +241,54 @@ def main():
         hc.markdown(f"**{lbl}**")
     st.divider()
 
-    # Satu baris per order — key pakai row_idx (integer, selalu unik)
+    # Tabel order dalam container scrollable (max 400px)
     pesanan_terpilih = []
-    for _, row in df_filtered.iterrows():
-        ridx  = int(row["row_idx"])
-        id_   = row["id_pesanan"]
-        p_ori = pesanan_semua[ridx]
+    with st.container(height=400):
+        for _, row in df_filtered.iterrows():
+            ridx  = int(row["row_idx"])
+            id_   = row["id_pesanan"]
+            p_ori = pesanan_semua[ridx]
 
-        rcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
+            rcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
 
-        # Checkbox — key = integer row index, dijamin unik
-        dipilih = rcols[0].checkbox(
-            "", value=(ridx in st.session_state["selected_rows"]),
-            key=f"chk_{ridx}",
-            label_visibility="collapsed",
-        )
-        if dipilih:
-            st.session_state["selected_rows"].add(ridx)
-        else:
-            st.session_state["selected_rows"].discard(ridx)
+            # Checkbox — key = integer row index, dijamin unik
+            dipilih = rcols[0].checkbox(
+                "", value=(ridx in st.session_state["selected_rows"]),
+                key=f"chk_{ridx}",
+                label_visibility="collapsed",
+            )
+            if dipilih:
+                st.session_state["selected_rows"].add(ridx)
+            else:
+                st.session_state["selected_rows"].discard(ridx)
 
-        rcols[1].write(id_)
-        rcols[2].write(row["jenis_produk"])
-        rcols[3].write(int(row["jumlah_unit"]))
-        rcols[4].write(row["deadline"].strftime("%d/%m/%Y"))
+            rcols[1].write(id_)
+            rcols[2].write(row["jenis_produk"])
+            rcols[3].write(int(row["jumlah_unit"]))
+            rcols[4].write(row["deadline"].strftime("%d/%m/%Y"))
 
-        # Prioritas selectbox — key juga pakai row_idx
-        prio_default = st.session_state["prioritas_edit"].get(ridx, row["prioritas"])
-        prio_idx = ["Normal","Tinggi","Kritis"].index(prio_default) \
-                   if prio_default in ["Normal","Tinggi","Kritis"] else 0
-        prio_baru = rcols[5].selectbox(
-            "", ["Normal","Tinggi","Kritis"], index=prio_idx,
-            key=f"prio_{ridx}",
-            label_visibility="collapsed",
-        )
-        st.session_state["prioritas_edit"][ridx] = prio_baru
+            # Prioritas selectbox — key juga pakai row_idx
+            prio_default = st.session_state["prioritas_edit"].get(ridx, row["prioritas"])
+            prio_idx = ["Normal","Tinggi","Kritis"].index(prio_default) \
+                       if prio_default in ["Normal","Tinggi","Kritis"] else 0
+            prio_baru = rcols[5].selectbox(
+                "", ["Normal","Tinggi","Kritis"], index=prio_idx,
+                key=f"prio_{ridx}",
+                label_visibility="collapsed",
+            )
+            st.session_state["prioritas_edit"][ridx] = prio_baru
 
-        rcols[6].write(row["furing"])
-        rcols[7].write(row["kancing"])
-        rcols[8].write(row["sablon"])
-        rcols[9].write(row["dtf"])
-        rcols[10].write(row["bordir"])
+            rcols[6].write(row["furing"])
+            rcols[7].write(row["kancing"])
+            rcols[8].write(row["sablon"])
+            rcols[9].write(row["dtf"])
+            rcols[10].write(row["bordir"])
 
-        if dipilih:
-            p = dict(p_ori)
-            p["prioritas"] = prio_baru
-            p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
-            pesanan_terpilih.append(p)
+            if dipilih:
+                p = dict(p_ori)
+                p["prioritas"] = prio_baru
+                p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
+                pesanan_terpilih.append(p)
 
     n_terpilih = len(pesanan_terpilih)
     total_unit = sum(p["jumlah_unit"] for p in pesanan_terpilih)
