@@ -148,7 +148,6 @@ def buat_gantt(
             showgrid=True,
             gridcolor="#313244",
             tickfont=dict(size=10, color="#cdd6f4"),
-            titlefont=dict(color="#cdd6f4"),
         ),
         yaxis=dict(
             title="Stasiun Kerja",
@@ -157,7 +156,6 @@ def buat_gantt(
             showgrid=True,
             gridcolor="#313244",
             tickfont=dict(color="#cdd6f4"),
-            titlefont=dict(color="#cdd6f4"),
         ),
         shapes=shapes,
         legend=dict(
@@ -165,15 +163,13 @@ def buat_gantt(
             x=1.01, y=1, xanchor="left",
             font=dict(size=9, color="#cdd6f4"),
             bgcolor="#313244",
-            bordercolor="#45475a",
-            borderwidth=1,
             tracegroupgap=2,
         ),
         margin=dict(l=185, r=170, t=60, b=90),
         plot_bgcolor="#1e1e2e",
         paper_bgcolor="#1e1e2e",
         font=dict(color="#cdd6f4"),
-        hoverlabel=dict(bgcolor="#313244", font_size=12, font_color="#cdd6f4"),
+        hoverlabel=dict(bgcolor="#313244", font_size=12),
     )
 
     _tambah_blok_minggu(fig, tanggal_mulai, hasil_list)
