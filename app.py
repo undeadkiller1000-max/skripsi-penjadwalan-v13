@@ -243,10 +243,12 @@ def main():
                     del st.session_state[k]
             st.rerun()
 
-    # Pagination — 15 baris per halaman
+    # Tabel dengan scroll CSS — TANPA st.container(height=) yang rusak checkbox
+    # Checkbox TIDAK pakai key agar tidak konflik dengan session_state
     PAGE_SIZE = 15
     total_rows = len(df_filtered)
     total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+
     if st.session_state.get("_filter_sig_page") != filter_sig:
         st.session_state["_filter_sig_page"] = filter_sig
         st.session_state["tabel_page"] = 0
@@ -271,23 +273,24 @@ def main():
 
     df_page = df_filtered.iloc[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
 
-    # Header kolom
+    # Header
     hcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
     for hc, lbl in zip(hcols, ["✓","ID Pesanan","Produk","Unit","Deadline",
                                  "Prioritas","Furing","Kancing","Sablon","DTF","Bordir"]):
         hc.markdown(f"**{lbl}**")
     st.divider()
 
-    # Render baris halaman aktif — TANPA st.container agar checkbox berfungsi
-    pesanan_terpilih_page = []
-    for _, row in df_page.iterrows():
+    # Render baris — checkbox tanpa key, pakai value dari selected_rows
+    pesanan_terpilih = []
+    for enum_i, (_, row) in enumerate(df_page.iterrows()):
         ridx  = int(row["row_idx"])
         p_ori = pesanan_semua[ridx]
         rcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
 
+        # Tidak pakai key — value= langsung dari selected_rows, tidak ada konflik
         dipilih = rcols[0].checkbox(
-            "", value=(ridx in st.session_state["selected_rows"]),
-            key=f"chk_{ridx}",
+            label=f"sel_{ridx}",
+            value=(ridx in st.session_state["selected_rows"]),
             label_visibility="collapsed",
         )
         if dipilih:
@@ -318,11 +321,10 @@ def main():
             p = dict(p_ori)
             p["prioritas"] = prio_baru
             p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
-            pesanan_terpilih_page.append(p)
+            pesanan_terpilih.append(p)
 
-    # Gabung dengan pesanan terpilih dari halaman lain
+    # Tambahkan pesanan terpilih dari halaman lain yang tidak tampil
     ridx_page = {int(r["row_idx"]) for _, r in df_page.iterrows()}
-    pesanan_terpilih = pesanan_terpilih_page[:]
     for _, row in df_filtered.iterrows():
         ridx = int(row["row_idx"])
         if ridx in st.session_state["selected_rows"] and ridx not in ridx_page:
