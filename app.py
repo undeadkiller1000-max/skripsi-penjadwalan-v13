@@ -243,54 +243,57 @@ def main():
                     del st.session_state[k]
             st.rerun()
 
-    # Header
-    hcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
-    for hc, lbl in zip(hcols, ["✓","ID Pesanan","Produk","Unit","Deadline",
-                                 "Prioritas","Furing","Kancing","Sablon","DTF","Bordir"]):
-        hc.markdown(f"**{lbl}**")
-    st.divider()
+    # Tampilan tabel pakai st.data_editor — support scroll, checkbox native
+    df_editor = df_filtered[["row_idx","id_pesanan","jenis_produk","jumlah_unit",
+                              "deadline","prioritas","furing","kancing","sablon","dtf","bordir"]].copy()
+    df_editor.insert(0, "Pilih", df_editor["row_idx"].apply(
+        lambda r: r in st.session_state["selected_rows"]
+    ))
+    df_editor["deadline"] = df_editor["deadline"].apply(lambda d: d.strftime("%d/%m/%Y"))
 
-    # Render semua baris langsung (tanpa container/pagination)
-    # Checkbox tanpa key agar tidak konflik dengan session_state
+    edited = st.data_editor(
+        df_editor,
+        column_config={
+            "Pilih":       st.column_config.CheckboxColumn("✓", width="small"),
+            "row_idx":     None,  # sembunyikan
+            "id_pesanan":  st.column_config.TextColumn("ID Pesanan", width="large"),
+            "jenis_produk":st.column_config.TextColumn("Produk", width="small"),
+            "jumlah_unit": st.column_config.NumberColumn("Unit", width="small"),
+            "deadline":    st.column_config.TextColumn("Deadline", width="small"),
+            "prioritas":   st.column_config.SelectboxColumn(
+                "Prioritas", options=["Normal","Tinggi","Kritis"], width="medium"
+            ),
+            "furing":      st.column_config.TextColumn("Furing", width="small"),
+            "kancing":     st.column_config.TextColumn("Kancing", width="small"),
+            "sablon":      st.column_config.TextColumn("Sablon", width="small"),
+            "dtf":         st.column_config.TextColumn("DTF", width="small"),
+            "bordir":      st.column_config.TextColumn("Bordir", width="small"),
+        },
+        hide_index=True,
+        use_container_width=True,
+        height=400,
+        disabled=["id_pesanan","jenis_produk","jumlah_unit","deadline",
+                  "furing","kancing","sablon","dtf","bordir"],
+    )
+
+    # Sync hasil edit kembali ke session_state
+    st.session_state["selected_rows"] = set(
+        int(row["row_idx"]) for _, row in edited.iterrows() if row["Pilih"]
+    )
+    for _, row in edited.iterrows():
+        ridx = int(row["row_idx"])
+        st.session_state["prioritas_edit"][ridx] = row["prioritas"]
+
+    # Bangun pesanan_terpilih
     pesanan_terpilih = []
-    for _, row in df_filtered.iterrows():
-        ridx  = int(row["row_idx"])
-        p_ori = pesanan_semua[ridx]
-        rcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
-
-        dipilih = rcols[0].checkbox(
-            label=f"sel_{ridx}",
-            value=(ridx in st.session_state["selected_rows"]),
-            label_visibility="collapsed",
-        )
-        if dipilih:
-            st.session_state["selected_rows"].add(ridx)
-        else:
-            st.session_state["selected_rows"].discard(ridx)
-
-        rcols[1].write(row["id_pesanan"])
-        rcols[2].write(row["jenis_produk"])
-        rcols[3].write(int(row["jumlah_unit"]))
-        rcols[4].write(row["deadline"].strftime("%d/%m/%Y"))
-
-        prio_default = st.session_state["prioritas_edit"].get(ridx, row["prioritas"])
-        prio_idx = ["Normal","Tinggi","Kritis"].index(prio_default)                    if prio_default in ["Normal","Tinggi","Kritis"] else 0
-        prio_baru = rcols[5].selectbox(
-            "", ["Normal","Tinggi","Kritis"], index=prio_idx,
-            key=f"prio_{ridx}", label_visibility="collapsed",
-        )
-        st.session_state["prioritas_edit"][ridx] = prio_baru
-
-        rcols[6].write(row["furing"])
-        rcols[7].write(row["kancing"])
-        rcols[8].write(row["sablon"])
-        rcols[9].write(row["dtf"])
-        rcols[10].write(row["bordir"])
-
-        if dipilih:
+    for _, row in edited.iterrows():
+        if row["Pilih"]:
+            ridx  = int(row["row_idx"])
+            p_ori = pesanan_semua[ridx]
+            prio  = row["prioritas"]
             p = dict(p_ori)
-            p["prioritas"] = prio_baru
-            p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
+            p["prioritas"] = prio
+            p["bobot"]     = BOBOT_PRIORITAS.get(prio, 1)
             pesanan_terpilih.append(p)
     n_terpilih = len(pesanan_terpilih)
     total_unit = sum(p["jumlah_unit"] for p in pesanan_terpilih)
