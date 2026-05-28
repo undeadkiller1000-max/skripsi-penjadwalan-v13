@@ -230,9 +230,18 @@ def main():
     with col_btn1:
         if st.button("✅ Pilih Semua", use_container_width=True, key="btn_all"):
             st.session_state["selected_rows"] = set(rows_filtered)
+            # Hapus key checkbox lama agar Streamlit baca ulang dari value=
+            for k in list(st.session_state.keys()):
+                if k.startswith("chk_"):
+                    del st.session_state[k]
+            st.rerun()
     with col_btn2:
         if st.button("❌ Hapus Semua", use_container_width=True, key="btn_none"):
             st.session_state["selected_rows"] = set()
+            for k in list(st.session_state.keys()):
+                if k.startswith("chk_"):
+                    del st.session_state[k]
+            st.rerun()
 
     # Header kolom
     hcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
