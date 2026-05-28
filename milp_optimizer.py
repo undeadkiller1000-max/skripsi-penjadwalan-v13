@@ -137,7 +137,7 @@ def jalankan_milp(
 
             model += (
                 s[jid][st_next] >= s[jid][st_curr] + wp_curr + setup_curr,
-                f"prec_{jid}_{st_curr}_{st_next}"
+                f"prec_{_sanitize(jid)}_{st_curr}_{st_next}"
             )
 
         # 2. Tardiness
@@ -148,7 +148,7 @@ def jalankan_milp(
 
         model += (
             T[jid] >= completion - p["deadline_mnt"],
-            f"tard_{jid}"
+            f"tard_{_sanitize(jid)}"
         )
 
     # 3. No-overlap: setiap pasangan job yang berbagi stasiun
@@ -163,11 +163,11 @@ def jalankan_milp(
         # j1 selesai sebelum j2 mulai, ATAU j2 selesai sebelum j1 mulai
         model += (
             s[j1_id][st] + wp1 + setup_st <= s[j2_id][st] + big_m * (1 - y[key]),
-            f"nooverlap_{j1_id}_{j2_id}_{st}_a"
+            f"nooverlap_{_sanitize(j1_id)}_{_sanitize(j2_id)}_{st}_a"
         )
         model += (
             s[j2_id][st] + wp2 + setup_st <= s[j1_id][st] + big_m * y[key],
-            f"nooverlap_{j1_id}_{j2_id}_{st}_b"
+            f"nooverlap_{_sanitize(j1_id)}_{_sanitize(j2_id)}_{st}_b"
         )
 
     # -- Warm start dari SA (hint urutan ke solver) --
