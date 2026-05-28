@@ -333,7 +333,7 @@ def render_tab_reoptimasi(hasil_jadwal_aktif, pesanan_routed,
             tgl_s, wkt_s = menit_ke_tanggal_waktu(tanggal_mulai, h["completion_time"])
             if st.checkbox(
                 f"{h['id_pesanan']} ({h['jenis_produk']} {h['jumlah_unit']}u)",
-                key=f"kunci_{h['id_pesanan']}",
+                key=f"kunci_{i}",
                 help=f"Est. selesai: {tgl_s.strftime('%d/%m')} {wkt_s}",
             ):
                 id_terkunci.append(h["id_pesanan"])
