@@ -243,6 +243,34 @@ def main():
                     del st.session_state[k]
             st.rerun()
 
+    # Pagination — 15 baris per halaman
+    PAGE_SIZE = 15
+    total_rows = len(df_filtered)
+    total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+    if st.session_state.get("_filter_sig_page") != filter_sig:
+        st.session_state["_filter_sig_page"] = filter_sig
+        st.session_state["tabel_page"] = 0
+    page = max(0, min(st.session_state.get("tabel_page", 0), total_pages - 1))
+
+    if total_pages > 1:
+        nav1, nav2, nav3 = st.columns([1, 2, 1])
+        with nav1:
+            if st.button("◀ Prev", key="pg_prev", disabled=(page == 0)):
+                st.session_state["tabel_page"] = page - 1
+                st.rerun()
+        with nav2:
+            st.markdown(
+                f"<div style='text-align:center;padding-top:8px'>"
+                f"Hal. {page+1}/{total_pages} &nbsp;({total_rows} order)</div>",
+                unsafe_allow_html=True,
+            )
+        with nav3:
+            if st.button("Next ▶", key="pg_next", disabled=(page == total_pages - 1)):
+                st.session_state["tabel_page"] = page + 1
+                st.rerun()
+
+    df_page = df_filtered.iloc[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+
     # Header kolom
     hcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
     for hc, lbl in zip(hcols, ["✓","ID Pesanan","Produk","Unit","Deadline",
@@ -250,55 +278,60 @@ def main():
         hc.markdown(f"**{lbl}**")
     st.divider()
 
-    # Tabel order dalam container scrollable (max 400px)
-    pesanan_terpilih = []
-    with st.container(height=400):
-        for _, row in df_filtered.iterrows():
-            ridx  = int(row["row_idx"])
-            id_   = row["id_pesanan"]
+    # Render baris halaman aktif — TANPA st.container agar checkbox berfungsi
+    pesanan_terpilih_page = []
+    for _, row in df_page.iterrows():
+        ridx  = int(row["row_idx"])
+        p_ori = pesanan_semua[ridx]
+        rcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
+
+        dipilih = rcols[0].checkbox(
+            "", value=(ridx in st.session_state["selected_rows"]),
+            key=f"chk_{ridx}",
+            label_visibility="collapsed",
+        )
+        if dipilih:
+            st.session_state["selected_rows"].add(ridx)
+        else:
+            st.session_state["selected_rows"].discard(ridx)
+
+        rcols[1].write(row["id_pesanan"])
+        rcols[2].write(row["jenis_produk"])
+        rcols[3].write(int(row["jumlah_unit"]))
+        rcols[4].write(row["deadline"].strftime("%d/%m/%Y"))
+
+        prio_default = st.session_state["prioritas_edit"].get(ridx, row["prioritas"])
+        prio_idx = ["Normal","Tinggi","Kritis"].index(prio_default)                    if prio_default in ["Normal","Tinggi","Kritis"] else 0
+        prio_baru = rcols[5].selectbox(
+            "", ["Normal","Tinggi","Kritis"], index=prio_idx,
+            key=f"prio_{ridx}", label_visibility="collapsed",
+        )
+        st.session_state["prioritas_edit"][ridx] = prio_baru
+
+        rcols[6].write(row["furing"])
+        rcols[7].write(row["kancing"])
+        rcols[8].write(row["sablon"])
+        rcols[9].write(row["dtf"])
+        rcols[10].write(row["bordir"])
+
+        if dipilih:
+            p = dict(p_ori)
+            p["prioritas"] = prio_baru
+            p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
+            pesanan_terpilih_page.append(p)
+
+    # Gabung dengan pesanan terpilih dari halaman lain
+    ridx_page = {int(r["row_idx"]) for _, r in df_page.iterrows()}
+    pesanan_terpilih = pesanan_terpilih_page[:]
+    for _, row in df_filtered.iterrows():
+        ridx = int(row["row_idx"])
+        if ridx in st.session_state["selected_rows"] and ridx not in ridx_page:
             p_ori = pesanan_semua[ridx]
-
-            rcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
-
-            # Checkbox — key = integer row index, dijamin unik
-            dipilih = rcols[0].checkbox(
-                "", value=(ridx in st.session_state["selected_rows"]),
-                key=f"chk_{ridx}",
-                label_visibility="collapsed",
-            )
-            if dipilih:
-                st.session_state["selected_rows"].add(ridx)
-            else:
-                st.session_state["selected_rows"].discard(ridx)
-
-            rcols[1].write(id_)
-            rcols[2].write(row["jenis_produk"])
-            rcols[3].write(int(row["jumlah_unit"]))
-            rcols[4].write(row["deadline"].strftime("%d/%m/%Y"))
-
-            # Prioritas selectbox — key juga pakai row_idx
-            prio_default = st.session_state["prioritas_edit"].get(ridx, row["prioritas"])
-            prio_idx = ["Normal","Tinggi","Kritis"].index(prio_default) \
-                       if prio_default in ["Normal","Tinggi","Kritis"] else 0
-            prio_baru = rcols[5].selectbox(
-                "", ["Normal","Tinggi","Kritis"], index=prio_idx,
-                key=f"prio_{ridx}",
-                label_visibility="collapsed",
-            )
-            st.session_state["prioritas_edit"][ridx] = prio_baru
-
-            rcols[6].write(row["furing"])
-            rcols[7].write(row["kancing"])
-            rcols[8].write(row["sablon"])
-            rcols[9].write(row["dtf"])
-            rcols[10].write(row["bordir"])
-
-            if dipilih:
-                p = dict(p_ori)
-                p["prioritas"] = prio_baru
-                p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
-                pesanan_terpilih.append(p)
-
+            prio_baru = st.session_state["prioritas_edit"].get(ridx, row["prioritas"])
+            p = dict(p_ori)
+            p["prioritas"] = prio_baru
+            p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
+            pesanan_terpilih.append(p)
     n_terpilih = len(pesanan_terpilih)
     total_unit = sum(p["jumlah_unit"] for p in pesanan_terpilih)
 
