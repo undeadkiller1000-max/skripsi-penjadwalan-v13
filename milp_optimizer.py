@@ -72,6 +72,21 @@ def jalankan_milp(
     if len(pesanan_routed) == 0:
         return [], 0.0, {}
 
+    # MILP tidak efektif untuk dataset besar (>25 job)
+    # karena jumlah binary variable O(n²) membuat solver tidak bisa
+    # menemukan solusi bagus dalam batas waktu
+    BATAS_JOB_MILP = 25
+    if len(pesanan_routed) > BATAS_JOB_MILP:
+        return None, None, {
+            "metode": "MILP (CBC)",
+            "status": "Dilewati",
+            "error": (
+                f"MILP dilewati: {len(pesanan_routed)} job > batas {BATAS_JOB_MILP} job. "
+                f"Untuk dataset besar, SA memberikan hasil yang lebih baik dalam waktu singkat."
+            ),
+            "waktu_komputasi_detik": 0,
+        }
+
     resource_count = get_resource_count(resource_override)
     st_time = setup_time or {st: 0.0 for st in range(1, 11)}
 
@@ -175,15 +190,18 @@ def jalankan_milp(
         msg=0,   # silent
     )
 
-    status = model.solve(solver)
+    model.solve(solver)
     waktu_selesai = time.time()
 
+    # sol_status: 1=Optimal, 2=IntegerFeasible(time limit hit), lainnya=tidak ada solusi
+    sol_status = model.sol_status
     status_str = pulp.LpStatus[model.status]
     obj_value  = pulp.value(model.objective)
 
     info = {
         "metode":                "MILP (CBC)",
         "status":                status_str,
+        "sol_status":            sol_status,
         "objective_value":       round(obj_value, 2) if obj_value is not None else None,
         "waktu_komputasi_detik": round(waktu_selesai - waktu_mulai, 2),
         "n_variabel":            len(model.variables()),
@@ -193,8 +211,9 @@ def jalankan_milp(
     }
 
     # -- Ekstrak solusi jika feasible --
-    if status in (1, -1) and obj_value is not None:
-        # status 1 = Optimal, -1 = Not solved but feasible (time limit hit)
+    # sol_status 1=Optimal, 2=IntegerFeasible (solusi ada tapi belum optimal, kena time limit)
+    ada_solusi = sol_status in (pulp.LpSolutionOptimal, pulp.LpSolutionIntegerFeasible)
+    if ada_solusi and obj_value is not None:
         urutan_milp = _ekstrak_urutan_idx(s, pesanan_routed, resource_count, st_time)
         if urutan_milp is not None:
             hasil_list, total_wt = simulate_schedule(
@@ -203,7 +222,7 @@ def jalankan_milp(
                 setup_time=setup_time,
             )
             info["urutan_terbaik"] = [p["id_pesanan"] for p in urutan_milp]
-            info["solusi_optimal"] = (status == 1)
+            info["solusi_optimal"] = (sol_status == pulp.LpSolutionOptimal)
             return hasil_list, total_wt, info
 
     # Tidak ada solusi feasible
