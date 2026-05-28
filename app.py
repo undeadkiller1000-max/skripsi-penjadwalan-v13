@@ -243,36 +243,6 @@ def main():
                     del st.session_state[k]
             st.rerun()
 
-    # Tabel dengan scroll CSS — TANPA st.container(height=) yang rusak checkbox
-    # Checkbox TIDAK pakai key agar tidak konflik dengan session_state
-    PAGE_SIZE = 15
-    total_rows = len(df_filtered)
-    total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
-
-    if st.session_state.get("_filter_sig_page") != filter_sig:
-        st.session_state["_filter_sig_page"] = filter_sig
-        st.session_state["tabel_page"] = 0
-    page = max(0, min(st.session_state.get("tabel_page", 0), total_pages - 1))
-
-    if total_pages > 1:
-        nav1, nav2, nav3 = st.columns([1, 2, 1])
-        with nav1:
-            if st.button("◀ Prev", key="pg_prev", disabled=(page == 0)):
-                st.session_state["tabel_page"] = page - 1
-                st.rerun()
-        with nav2:
-            st.markdown(
-                f"<div style='text-align:center;padding-top:8px'>"
-                f"Hal. {page+1}/{total_pages} &nbsp;({total_rows} order)</div>",
-                unsafe_allow_html=True,
-            )
-        with nav3:
-            if st.button("Next ▶", key="pg_next", disabled=(page == total_pages - 1)):
-                st.session_state["tabel_page"] = page + 1
-                st.rerun()
-
-    df_page = df_filtered.iloc[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
-
     # Header
     hcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
     for hc, lbl in zip(hcols, ["✓","ID Pesanan","Produk","Unit","Deadline",
@@ -280,14 +250,14 @@ def main():
         hc.markdown(f"**{lbl}**")
     st.divider()
 
-    # Render baris — checkbox tanpa key, pakai value dari selected_rows
+    # Render semua baris langsung (tanpa container/pagination)
+    # Checkbox tanpa key agar tidak konflik dengan session_state
     pesanan_terpilih = []
-    for enum_i, (_, row) in enumerate(df_page.iterrows()):
+    for _, row in df_filtered.iterrows():
         ridx  = int(row["row_idx"])
         p_ori = pesanan_semua[ridx]
         rcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
 
-        # Tidak pakai key — value= langsung dari selected_rows, tidak ada konflik
         dipilih = rcols[0].checkbox(
             label=f"sel_{ridx}",
             value=(ridx in st.session_state["selected_rows"]),
@@ -318,18 +288,6 @@ def main():
         rcols[10].write(row["bordir"])
 
         if dipilih:
-            p = dict(p_ori)
-            p["prioritas"] = prio_baru
-            p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
-            pesanan_terpilih.append(p)
-
-    # Tambahkan pesanan terpilih dari halaman lain yang tidak tampil
-    ridx_page = {int(r["row_idx"]) for _, r in df_page.iterrows()}
-    for _, row in df_filtered.iterrows():
-        ridx = int(row["row_idx"])
-        if ridx in st.session_state["selected_rows"] and ridx not in ridx_page:
-            p_ori = pesanan_semua[ridx]
-            prio_baru = st.session_state["prioritas_edit"].get(ridx, row["prioritas"])
             p = dict(p_ori)
             p["prioritas"] = prio_baru
             p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
