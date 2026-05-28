@@ -243,33 +243,28 @@ def main():
                     del st.session_state[k]
             st.rerun()
 
-    # Inject CSS: bungkus semua baris tabel dalam div scrollable 400px
-    # Ini cara satu-satunya yang bisa scroll SEKALIGUS checkbox berfungsi normal
-    st.markdown("""
-    <style>
-    div[data-testid="stVerticalBlockBorderWrapper"]:has(div.tabel-order) {
-        max-height: 400px;
-        overflow-y: auto;
-        border: 1px solid rgba(255,255,255,0.1);
-        border-radius: 8px;
-        padding: 4px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # Pagination — 20 baris per halaman
+    PAGE_SIZE = 20
+    total_rows = len(df_filtered)
+    total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
 
-    # Marker div — CSS di atas mendeteksi ini dan memberi scroll ke parent-nya
-    st.markdown('<div class="tabel-order"></div>', unsafe_allow_html=True)
+    if st.session_state.get("_filter_sig_page") != filter_sig:
+        st.session_state["_filter_sig_page"] = filter_sig
+        st.session_state["tabel_page"] = 0
+    page = max(0, min(st.session_state.get("tabel_page", 0), total_pages - 1))
 
-    # Header
+    df_page = df_filtered.iloc[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
+
+    # Header kolom
     hcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
     for hc, lbl in zip(hcols, ["✓","ID Pesanan","Produk","Unit","Deadline",
                                  "Prioritas","Furing","Kancing","Sablon","DTF","Bordir"]):
         hc.markdown(f"**{lbl}**")
     st.divider()
 
-    # Render semua baris — checkbox tanpa key agar tidak konflik session_state
+    # Render baris halaman aktif — checkbox tanpa key
     pesanan_terpilih = []
-    for _, row in df_filtered.iterrows():
+    for _, row in df_page.iterrows():
         ridx  = int(row["row_idx"])
         p_ori = pesanan_semua[ridx]
         rcols = st.columns([0.5, 2.5, 1.2, 0.8, 1.2, 1.5, 0.7, 0.7, 0.7, 0.7, 0.7])
@@ -304,6 +299,38 @@ def main():
         rcols[10].write(row["bordir"])
 
         if dipilih:
+            p = dict(p_ori)
+            p["prioritas"] = prio_baru
+            p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
+            pesanan_terpilih.append(p)
+
+    # Navigasi halaman — di bawah tabel
+    st.divider()
+    n_terpilih_total = len(st.session_state["selected_rows"])
+    nav1, nav2, nav3, nav4 = st.columns([1, 1, 2, 1])
+    with nav1:
+        if st.button("◀ Prev", key="pg_prev", disabled=(page == 0), use_container_width=True):
+            st.session_state["tabel_page"] = page - 1
+            st.rerun()
+    with nav2:
+        if st.button("Next ▶", key="pg_next", disabled=(page == total_pages - 1), use_container_width=True):
+            st.session_state["tabel_page"] = page + 1
+            st.rerun()
+    with nav3:
+        st.markdown(
+            f"<div style='padding-top:8px;text-align:center'>"
+            f"Hal. <b>{page+1}</b>/{total_pages} &nbsp;·&nbsp; "
+            f"<b>{n_terpilih_total}</b> terpilih dari {total_rows} order</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Kumpulkan pesanan terpilih dari halaman lain
+    ridx_page = {int(r["row_idx"]) for _, r in df_page.iterrows()}
+    for _, row in df_filtered.iterrows():
+        ridx = int(row["row_idx"])
+        if ridx in st.session_state["selected_rows"] and ridx not in ridx_page:
+            p_ori = pesanan_semua[ridx]
+            prio_baru = st.session_state["prioritas_edit"].get(ridx, row["prioritas"])
             p = dict(p_ori)
             p["prioritas"] = prio_baru
             p["bobot"]     = BOBOT_PRIORITAS.get(prio_baru, 1)
