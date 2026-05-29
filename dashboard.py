@@ -72,7 +72,7 @@ def render_dashboard(
     with tabs[3]:
         _tab_laporan_manajemen(
             hasil_pemenang, hasil_fcfs, tanggal_mulai,
-            nama_pemenang, info_sa, info_milp
+            nama_pemenang, info_sa, info_milp, hasil_kalah=hasil_kalah
         )
 
     with tabs[4]:
@@ -142,7 +142,7 @@ def _tab_gantt(hasil_list, tanggal_mulai, judul):
 # TAB LAPORAN MANAJEMEN (poin #6: warna kontras)
 # ---------------------------------------------------------------------------
 def _tab_laporan_manajemen(hasil_pemenang, hasil_fcfs, tanggal_mulai,
-                            nama_pemenang, info_sa, info_milp):
+                            nama_pemenang, info_sa, info_milp, hasil_kalah=None):
     st.subheader("Perbandingan Performa Metode")
     perf_p = ringkasan_performa(hasil_pemenang)
     perf_f = ringkasan_performa(hasil_fcfs)
@@ -167,21 +167,68 @@ def _tab_laporan_manajemen(hasil_pemenang, hasil_fcfs, tanggal_mulai,
         st.info("FCFS sudah zero tardiness.")
 
     # Info komputasi
-    with st.expander("Info Komputasi", expanded=False):
+    with st.expander("🔍 Info Komputasi & Diagnostik MILP", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**Simulated Annealing**")
             if info_sa:
-                st.write(f"- Iterasi: {info_sa.get('n_iterasi_dijalankan','-'):,}")
-                st.write(f"- Waktu: {info_sa.get('waktu_komputasi_detik','-')} detik")
-                st.write(f"- W.Tardiness SA: {info_sa.get('wt_terbaik','-'):.1f}")
+                st.write(f"- Iterasi dijalankan: {info_sa.get('n_iterasi_dijalankan','-'):,}")
+                st.write(f"- Waktu komputasi: {info_sa.get('waktu_komputasi_detik','-')} detik")
+                st.write(f"- WT awal (EDD): {info_sa.get('wt_awal_edd', '-')}")
+                st.write(f"- WT terbaik SA: {info_sa.get('wt_terbaik','-'):.1f}")
+                st.write(f"- Suhu akhir: {info_sa.get('suhu_akhir', '-')}")
+                st.write(f"- Iterasi diterima: {info_sa.get('n_diterima', '-'):,}")
         with col2:
             st.markdown("**MILP (CBC)**")
             if info_milp:
-                st.write(f"- Status: {info_milp.get('status','-')}")
-                st.write(f"- Waktu: {info_milp.get('waktu_komputasi_detik','-')} detik")
-                wt_m = info_milp.get("objective_value")
-                st.write(f"- W.Tardiness MILP: {wt_m:.1f}" if wt_m else "- MILP: tidak ada solusi / dilewati")
+                status = info_milp.get('status', '-')
+                sol_status = info_milp.get('sol_status', '-')
+                waktu = info_milp.get('waktu_komputasi_detik', '-')
+                obj_val = info_milp.get('objective_value')
+                n_var = info_milp.get('n_variabel', '-')
+                n_con = info_milp.get('n_constraint', '-')
+                error = info_milp.get('error', None)
+
+                st.write(f"- Status solver: **{status}**")
+                st.write(f"- Sol. status: **{sol_status}** (1=Optimal, 2=Feasible, lain=Gagal)")
+                st.write(f"- Waktu komputasi: {waktu} detik")
+                st.write(f"- Jumlah variabel: {n_var}")
+                st.write(f"- Jumlah constraint: {n_con}")
+                if obj_val is not None:
+                    st.write(f"- **Objective value (solver):** {obj_val:.1f}")
+                else:
+                    st.write("- Objective value: —")
+                if error:
+                    st.warning(f"⚠ {error}")
+
+        # Diagnostik khusus: bandingkan objective solver vs WT aktual
+        if info_milp and hasil_kalah is not None:
+            obj_val = info_milp.get("objective_value")
+            wt_aktual_milp = sum(h["weighted_tardiness"] for h in hasil_kalah)
+            n_job_milp = len(hasil_kalah)
+            n_terlambat_milp = sum(1 for h in hasil_kalah if h["terlambat"])
+
+            st.divider()
+            st.markdown("**🔬 Diagnostik MILP**")
+            dcol1, dcol2, dcol3, dcol4 = st.columns(4)
+            dcol1.metric("Job di output MILP", n_job_milp)
+            dcol2.metric("Terlambat (MILP output)", n_terlambat_milp)
+            dcol3.metric("WT solver (objective)", f"{obj_val:.1f}" if obj_val else "—")
+            dcol4.metric("WT aktual (dihitung ulang)", f"{wt_aktual_milp:.1f}")
+
+            if obj_val is not None:
+                selisih = abs(wt_aktual_milp - obj_val)
+                if selisih > 1.0:
+                    st.error(
+                        f"⚠ INKONSISTENSI: Objective solver ({obj_val:.1f}) vs "
+                        f"WT aktual ({wt_aktual_milp:.1f}) — selisih {selisih:.1f}. "
+                        f"Kemungkinan masalah di ekstraksi jadwal dari variabel s."
+                    )
+                else:
+                    st.success(
+                        f"✓ Konsisten: Objective solver ({obj_val:.1f}) ≈ "
+                        f"WT aktual ({wt_aktual_milp:.1f}) — selisih {selisih:.2f}."
+                    )
 
     st.divider()
 
